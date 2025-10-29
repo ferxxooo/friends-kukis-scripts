@@ -1,10 +1,4 @@
-<!-- Firebase (compat) - Pegar esto en el body antes del script principal -->
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-storage-compat.js"></script>
-
 <script>
-/* ================== INICIALIZAR FIREBASE ================== */
 const firebaseConfig = {
   apiKey: "AIzaSyCoWEFFkPnGgjwTHwRYXUUcJ29KZPoj9R8",
   authDomain: "friends-kukis.firebaseapp.com",
@@ -22,39 +16,52 @@ const storage = firebase.storage();
 </script>
 
 <script>
-/* ================== SCRIPT PRINCIPAL MEJORADO ================== */
 document.addEventListener("DOMContentLoaded", function() {
-  // ====== CONFIGURACIÓN ======
-  const COSTO_DOMICILIO = 5000;
+
+const COSTO_MIN = 4000;
+  const COSTO_MAX = 15000;
+  let COSTO_DOMICILIO = 5000;      
+  let DISTANCIA_KM = null;         
+  const FALLBACK_DOMI = 6000;      
+
   
-  // ====== SISTEMA DE GUARDADO AUTOMÁTICO ======
+const DIRECCION_SEDES = {
+  Popayan: {
+    "Sede Terraplaza Centro Comercial": "Carrera 9 #73 AN-200 Norte, Cra. 9, Popayán, Cauca, Colombia",
+    'Sede Sur Planta de Producción': "Cra 40 # 4N - 05 barrio ciudad 2000, Popayán, Cauca, Colombia"
+  },
+  Jamundi: {
+    "Sede Centro Comercial Alfaguara": "Calle 2 #22-175, Jamundí, Valle del Cauca, Colombia"
+  },
+  Cali: {
+  }
+};
+
+
   let selectedProducts = [];
   let opcionDomicilio = 'recoger';
   let metodoPagoSeleccionado = '';
   let comprobanteArchivoGlobal = null;
 
-  // ====== GENERADOR DE ID DE SEGUIMIENTO ======
   function generarIDUnico() {
-      const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let resultado = '';
-      for (let i = 0; i < 4; i++) {
-          resultado += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
-      }
-      return resultado;
+    const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let resultado = '';
+    for (let i = 0; i < 4; i++) {
+      resultado += caracteres.charAt(Math.floor(Math.random() * caracteres.length));
+    }
+    return resultado;
   }
 
-  // Guardar estado en localStorage
   function guardarEstadoPedido() {
     const estado = {
-      selectedProducts: selectedProducts,
-      opcionDomicilio: opcionDomicilio,
-      metodoPagoSeleccionado: metodoPagoSeleccionado,
+      selectedProducts,
+      opcionDomicilio,
+      metodoPagoSeleccionado,
       timestamp: Date.now()
     };
     localStorage.setItem('friendsKukisPedido', JSON.stringify(estado));
   }
 
-  // Cargar estado desde localStorage
   function cargarEstadoPedido() {
     try {
       const guardado = localStorage.getItem('friendsKukisPedido');
@@ -77,18 +84,30 @@ document.addEventListener("DOMContentLoaded", function() {
     localStorage.removeItem('friendsKukisPedido');
   }
 
-  // Cargar estado al iniciar
   if (cargarEstadoPedido()) {
     console.log("✅ Estado del pedido recuperado");
   }
 
-  // ====== ELEMENTOS DEL DOM ======
   const canasta = document.querySelector('#canasta-kuki');
   const hiddenField = document.querySelector('#selected_products');
   const btnCanasta = document.querySelector('#btn-canasta-kuki');
   const formularioContainer = document.querySelector('#formulario-pedido');
 
-  // Configurar formulario
+  (function activarReboteIcono(){
+    const btnIcon = document.querySelector('#btn-canasta-kukiss');
+    if (!btnIcon) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes bounceKuki { 0%,100%{transform:scale(1)} 50%{transform:scale(1.25) rotate(-5deg)} }
+      #btn-canasta-kukiss.animando { animation: bounceKuki .5s ease; }
+    `;
+    document.head.appendChild(style);
+    btnIcon.addEventListener('click', () => {
+      btnIcon.classList.add('animando');
+      setTimeout(() => btnIcon.classList.remove('animando'), 500);
+    });
+  })();
+
   let formularioPersonalizado;
   if (formularioContainer) {
     if (!formularioContainer.querySelector('form')) {
@@ -98,9 +117,7 @@ document.addEventListener("DOMContentLoaded", function() {
     formularioContainer.style.display = 'none';
   }
 
-  // Configurar canasta
   if (canasta) canasta.style.display = 'none';
-  
   let countEl = document.querySelector('#canasta-count');
   if (!countEl && btnCanasta) {
     countEl = document.createElement('span');
@@ -108,7 +125,6 @@ document.addEventListener("DOMContentLoaded", function() {
     btnCanasta.appendChild(countEl);
   }
 
-  // ====== EVENT LISTENERS ======
   if (btnCanasta) {
     btnCanasta.addEventListener('click', (e) => {
       e.preventDefault();
@@ -124,17 +140,16 @@ document.addEventListener("DOMContentLoaded", function() {
       const price = parseFloat(btn.dataset.price);
 
       const existing = selectedProducts.find(p => p.name === name && p.category === category);
-      if(existing){
+      if (existing) {
         existing.quantity += 1;
       } else {
-        selectedProducts.push({name, category, price, quantity:1});
+        selectedProducts.push({ name, category, price, quantity: 1 });
       }
       guardarEstadoPedido();
       renderCanasta();
     });
   });
 
-  // Tabs
   document.querySelectorAll(".tab-content-menu").forEach(tab => tab.style.display = "none");
   document.querySelectorAll(".w-tab-link").forEach(function(link) {
     link.addEventListener("click", function() {
@@ -150,7 +165,6 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   });
 
-  // ====== FUNCIONES PRINCIPALES ======
   function formatearDetallesPedido() {
     let detalles = "DETALLES DEL PEDIDO:\n\n";
     let subtotalProductos = 0;
@@ -183,6 +197,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
     detalles += `\nSUBTOTAL PRODUCTOS: $${subtotalProductos}`;
     detalles += infoDomicilio;
+
+    if (DISTANCIA_KM != null) {
+      detalles += `\nDISTANCIA ESTIMADA: ${DISTANCIA_KM} km`;
+      detalles += `\nTARIFA DOMICILIO DINÁMICA: $${COSTO_DOMICILIO}`;
+    }
+
     if (pagoPendiente) {
       detalles += pagoPendiente;
       detalles += `\nTOTAL PAGADO EN LÍNEA: $${totalFinal}`;
@@ -191,11 +211,11 @@ document.addEventListener("DOMContentLoaded", function() {
       detalles += `\nTOTAL: $${totalFinal}`;
     }
 
-    return { 
-      texto: detalles, 
-      subtotalProductos: subtotalProductos,
+    return {
+      texto: detalles,
+      subtotalProductos,
       total: totalFinal,
-      opcionDomicilio: opcionDomicilio,
+      opcionDomicilio,
       costoDomicilio: COSTO_DOMICILIO,
       pagoPendiente: !!pagoPendiente
     };
@@ -239,7 +259,6 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
 
-    // Sección domicilio
     const domicilioDiv = document.createElement('div');
     domicilioDiv.className = 'domicilio-container';
     domicilioDiv.style.marginTop = '15px';
@@ -299,33 +318,46 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
     `;
 
+    if (DISTANCIA_KM != null) {
+      desgloseHTML += `
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span>Distancia estimada:</span>
+          <span>${DISTANCIA_KM} km</span>
+        </div>`;
+    } else if (opcionDomicilio !== 'recoger') {
+      desgloseHTML += `
+        <div style="margin-top:6px;font-size:12px;color:#666;">
+          (Ingresa <strong>Ciudad</strong>, <strong>Sede</strong> y <strong>Dirección</strong> para calcular la tarifa dinámica del domicilio)
+        </div>`;
+    }
+
     if (opcionDomicilio === 'recoger') {
-      desgloseHTML += `<div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #28a745;"><span>Recoger en tienda:</span><span>$0</span></div>`;
+      desgloseHTML += `<div style="display:flex;justify-content:space-between;margin-bottom:5px;color:#28a745;"><span>Recoger en tienda:</span><span>$0</span></div>`;
     } else if (opcionDomicilio === 'domicilio_pagado') {
-      desgloseHTML += `<div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #dc3545;"><span>Domicilio (pagado ahora):</span><span>$${COSTO_DOMICILIO}</span></div>`;
+      desgloseHTML += `<div style="display:flex;justify-content:space-between;margin-bottom:5px;color:#dc3545;"><span>Domicilio (pagado ahora):</span><span>$${COSTO_DOMICILIO}</span></div>`;
     } else if (opcionDomicilio === 'domicilio_efectivo') {
-      desgloseHTML += `<div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #ffc107;"><span>Domicilio (pagar al recibir):</span><span>$${COSTO_DOMICILIO}</span></div>`;
+      desgloseHTML += `<div style="display:flex;justify-content:space-between;margin-bottom:5px;color:#ffc107;"><span>Domicilio (pagar al recibir):</span><span>$${COSTO_DOMICILIO}</span></div>`;
     }
 
     const detallesObj = formatearDetallesPedido();
     if (detallesObj.pagoPendiente) {
       desgloseHTML += `
-        <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px solid #ccc; padding-top: 5px;">
+        <div style="display:flex;justify-content:space-between;font-weight:bold;border-top:1px solid #ccc;padding-top:5px;">
           <span>TOTAL (productos):</span>
           <span>$${totalFinal}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #ffc107; font-weight: bold;">
+        <div style="display:flex;justify-content:space-between;margin-top:5px;color:#ffc107;font-weight:bold;">
           <span>+ Domicilio (efectivo):</span>
           <span>$${COSTO_DOMICILIO}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 3px; font-weight: bold; color: #333;">
+        <div style="display:flex;justify-content:space-between;margin-top:3px;font-weight:bold;color:#333;">
           <span>TOTAL FINAL:</span>
           <span>$${totalFinal + COSTO_DOMICILIO}</span>
         </div>
       `;
     } else {
       desgloseHTML += `
-        <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px solid #ccc; padding-top: 5px;">
+        <div style="display:flex;justify-content:space-between;font-weight:bold;border-top:1px solid #ccc;padding-top:5px;">
           <span>TOTAL:</span>
           <span>$${totalFinal}</span>
         </div>
@@ -344,7 +376,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
       botonDoble.addEventListener('click', function() {
         let saboresValidos = true;
-        selectedProducts.forEach((p, index) => {
+        selectedProducts.forEach((p) => {
           if (p.category === 'BabyKukis' && (!p.sabores || p.sabores.length === 0)) {
             saboresValidos = false;
           }
@@ -364,21 +396,15 @@ document.addEventListener("DOMContentLoaded", function() {
           formularioContainer.style.display = 'block';
           botonDoble.textContent = 'SEGUIR COMPRANDO';
           botonDoble.style.background = '#6c757d';
-          
+
           setTimeout(() => {
             const formulario = document.querySelector('#formulario-pedido-personalizado');
             if (formulario) {
               const yOffset = -80;
               const y = formulario.getBoundingClientRect().top + window.pageYOffset + yOffset;
-              window.scrollTo({
-                top: y,
-                behavior: 'smooth'
-              });
+              window.scrollTo({ top: y, behavior: 'smooth' });
             } else {
-              formularioContainer.scrollIntoView({ 
-                behavior: "smooth",
-                block: "start"
-              });
+              formularioContainer.scrollIntoView({ behavior: "smooth", block: "start" });
             }
           }, 100);
         }
@@ -401,17 +427,15 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  // Delegación de eventos
   if (canasta) {
     canasta.addEventListener('change', function(e){
-      if(e.target.classList.contains('canasta-cantidad')){
+      if (e.target.classList.contains('canasta-cantidad')) {
         const idx = parseInt(e.target.dataset.index);
         selectedProducts[idx].quantity = parseInt(e.target.value) || 1;
         guardarEstadoPedido();
         renderCanasta();
       }
-      
-      if(e.target.name === 'opcion_domicilio') {
+      if (e.target.name === 'opcion_domicilio') {
         opcionDomicilio = e.target.value;
         guardarEstadoPedido();
         renderCanasta();
@@ -419,7 +443,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     canasta.addEventListener('click', function(e){
-      if(e.target.classList.contains('btn-remove')){
+      if (e.target.classList.contains('btn-remove')) {
         const idx = parseInt(e.target.dataset.index);
         selectedProducts.splice(idx, 1);
         guardarEstadoPedido();
@@ -427,126 +451,374 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     });
   }
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-storage-compat.js"></script>
 
-  // ====== FORMULARIO ======
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCoWEFFkPnGgjwTHwRYXUUcJ29KZPoj9R8",
+  authDomain: "friends-kukis.firebaseapp.com",
+  projectId: "friends-kukis",
+  storageBucket: "friends-kukis.firebasestorage.app",
+  messagingSenderId: "833642230061",
+  appId: "1:833642230061:web:70d4661ec772c8e84323a4"
+};
+
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.firestore();
+const storage = firebase.storage();
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+const COSTO_MIN = 4000;
+  const COSTO_MAX = 15000;
+  let COSTO_DOMICILIO = 5000;
+  let DISTANCIA_KM = null;
+  const FALLBACK_DOMI = 6000;
+
+  const DIRECCION_SEDES = {
+    Popayan: {
+      "Sede Terraplaza Centro Comercial": "Carrera 9 #73 AN-200 Norte, Cra. 9, Popayán, Cauca, Colombia",
+      "Sede Sur Planta de Producción": "Cra 40 # 4N - 05 barrio ciudad 2000, Popayán, Cauca, Colombia"
+    },
+    Jamundi: {
+      "Sede Centro Comercial Alfaguara": "Calle 2 #22-175, Jamundí, Valle del Cauca, Colombia"
+    },
+    Cali: {}
+  };
+
+  let selectedProducts = [];
+  let opcionDomicilio = "recoger";
+  let metodoPagoSeleccionado = "";
+  let comprobanteArchivoGlobal = null;
+
+  function generarIDUnico() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    return Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join("");
+  }
+
+  function guardarEstadoPedido() {
+    localStorage.setItem("friendsKukisPedido", JSON.stringify({
+      selectedProducts, opcionDomicilio, metodoPagoSeleccionado, timestamp: Date.now()
+    }));
+  }
+
+  function cargarEstadoPedido() {
+    try {
+      const guardado = localStorage.getItem("friendsKukisPedido");
+      if (guardado) {
+        const estado = JSON.parse(guardado);
+        if (Date.now() - estado.timestamp < 2 * 60 * 60 * 1000) {
+          selectedProducts = estado.selectedProducts || [];
+          opcionDomicilio = estado.opcionDomicilio || "recoger";
+          metodoPagoSeleccionado = estado.metodoPagoSeleccionado || "";
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error("Error cargando estado:", e);
+    }
+    return false;
+  }
+
+  function limpiarEstadoPedido() {
+    localStorage.removeItem("friendsKukisPedido");
+  }
+
+  if (cargarEstadoPedido()) console.log("✅ Estado del pedido recuperado");
+
+  const canasta = document.querySelector("#canasta-kuki");
+  const hiddenField = document.querySelector("#selected_products");
+  const btnCanasta = document.querySelector("#btn-canasta-kuki");
+  const formularioContainer = document.querySelector("#formulario-pedido");
+
+  (function activarReboteIcono() {
+    const btnIcon = document.querySelector("#btn-canasta-kukiss");
+    if (!btnIcon) return;
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes bounceKuki {0%,100%{transform:scale(1)}50%{transform:scale(1.25) rotate(-5deg)}}
+      #btn-canasta-kukiss.animando {animation:bounceKuki .5s ease;}
+    `;
+    document.head.appendChild(style);
+    btnIcon.addEventListener("click", () => {
+      btnIcon.classList.add("animando");
+      setTimeout(() => btnIcon.classList.remove("animando"), 500);
+    });
+  })();
+
+  let formularioPersonalizado;
+  if (formularioContainer) {
+    if (!formularioContainer.querySelector("form")) {
+      formularioPersonalizado = crearFormularioPersonalizado();
+      formularioContainer.appendChild(formularioPersonalizado);
+    }
+    formularioContainer.style.display = "none";
+  }
+
+  if (canasta) canasta.style.display = "none";
+  let countEl = document.querySelector("#canasta-count");
+  if (!countEl && btnCanasta) {
+    countEl = document.createElement("span");
+    countEl.id = "canasta-count";
+    btnCanasta.appendChild(countEl);
+  }
+
+  if (btnCanasta) {
+    btnCanasta.addEventListener("click", e => {
+      e.preventDefault();
+      if (canasta) canasta.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+
+  document.querySelectorAll(".carrito-btn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const name = btn.dataset.name;
+      const category = btn.dataset.categoria;
+      const price = parseFloat(btn.dataset.price);
+      const existing = selectedProducts.find(p => p.name === name && p.category === category);
+      if (existing) existing.quantity += 1;
+      else selectedProducts.push({ name, category, price, quantity: 1 });
+      guardarEstadoPedido();
+      renderCanasta();
+    });
+  });
+
+  function ensureGoogleMapsLoaded() {
+    return new Promise(resolve => {
+      if (window.google && google.maps && google.maps.DistanceMatrixService) return resolve();
+      if (document.getElementById("gmaps-sdk")) {
+        const check = setInterval(() => {
+          if (window.google && google.maps && google.maps.DistanceMatrixService) {
+            clearInterval(check); resolve();
+          }
+        }, 300);
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "gmaps-sdk";
+      script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyBUGX7VXXFeFsKSh5Lgzuy-SdGG5vRg-b0&libraries=places";
+      script.async = true;
+      document.head.appendChild(script);
+      const check = setInterval(() => {
+        if (window.google && google.maps && google.maps.DistanceMatrixService) {
+          clearInterval(check); resolve();
+        }
+      }, 300);
+    });
+  }
+
+  function geocodeAddress(address) {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !google.maps || !google.maps.Geocoder)
+        return reject(new Error("Google Maps Geocoder no disponible"));
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          const loc = results[0].geometry.location;
+          resolve({ lat: loc.lat(), lng: loc.lng() });
+        } else reject(new Error("No se pudo geocodificar: " + status));
+      });
+    });
+  }
+
+  function getDistanceKm(origin, destination) {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !google.maps || !google.maps.DistanceMatrixService)
+        return reject(new Error("Google Maps no cargó"));
+      const service = new google.maps.DistanceMatrixService();
+      service.getDistanceMatrix(
+        { origins: [origin], destinations: [destination], travelMode: "DRIVING", unitSystem: google.maps.UnitSystem.METRIC },
+        (response, status) => {
+          try {
+            if (status !== "OK") return reject(new Error("Status: " + status));
+            const elem = response.rows?.[0]?.elements?.[0];
+            if (!elem || elem.status !== "OK") return reject(new Error("Sin ruta válida"));
+            resolve(elem.distance.value / 1000);
+          } catch (e) { reject(e); }
+        }
+      );
+    });
+  }
+
+  function tarifaPorKm(km) {
+    const kMin = 1.5, kMax = 8;
+    if (km <= kMin) return COSTO_MIN;
+    if (km >= kMax) return COSTO_MAX;
+    const frac = (km - kMin) / (kMax - kMin);
+    return Math.round((COSTO_MIN + frac * (COSTO_MAX - COSTO_MIN)) / 100) * 100;
+  }
+
+  async function recalcularDomicilio(ciudad, sede, direccion) {
+    try {
+      if (!ciudad || !sede || !direccion || direccion.trim().length < 5) {
+        DISTANCIA_KM = null; COSTO_DOMICILIO = 5000; renderCanasta(); return;
+      }
+      const origen = DIRECCION_SEDES[ciudad]?.[sede];
+      if (!origen) {
+        DISTANCIA_KM = null; COSTO_DOMICILIO = FALLBACK_DOMI; renderCanasta(); return;
+      }
+      const destinoTexto = `${direccion}, ${ciudad}, Colombia`;
+      await ensureGoogleMapsLoaded();
+
+      const dirTxt = document.querySelector('[name="direccion_envio"]');
+      let lat = dirTxt?.dataset.lat, lng = dirTxt?.dataset.lng;
+
+      if (!lat || !lng) {
+        try {
+          const coords = await geocodeAddress(destinoTexto);
+          lat = coords.lat; lng = coords.lng;
+          console.log("📍 Coordenadas (geocode):", lat, lng);
+        } catch (e) { console.warn("⚠️ Geocoding falló:", e); }
+      }
+
+      const destinoFinal = lat && lng ? `${lat},${lng}` : destinoTexto;
+      const km = await getDistanceKm(origen, destinoFinal);
+
+      DISTANCIA_KM = Number(km.toFixed(2));
+      COSTO_DOMICILIO = tarifaPorKm(DISTANCIA_KM);
+      console.log(`🚚 Distancia: ${DISTANCIA_KM} km | Costo: $${COSTO_DOMICILIO}`);
+      renderCanasta();
+    } catch (err) {
+      console.warn("❌ Error domicilio:", err);
+      DISTANCIA_KM = null; COSTO_DOMICILIO = FALLBACK_DOMI; renderCanasta();
+    }
+  }
+
   function crearFormularioPersonalizado() {
-    const form = document.createElement('form');
-    form.id = 'formulario-pedido-personalizado';
-    form.style.padding = '20px';
-    form.style.border = '2px solid #e0e0e0';
-    form.style.borderRadius = '10px';
-    form.style.backgroundColor = '#fafafa';
-    form.style.marginTop = '20px';
+    const form = document.createElement("form");
+    form.id = "formulario-pedido-personalizado";
+    form.style.cssText = "padding:20px;border:2px solid #e0e0e0;border-radius:10px;background:#fafafa;margin-top:20px;";
 
     form.innerHTML = `
-      <h3 style="margin-bottom: 20px; color: #333; text-align: center;">INFORMACIÓN DEL PEDIDO</h3>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Nombre Completo *</label>
-        <input type="text" name="nombre_completo" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-      </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Número de WhatsApp *</label>
-        <input type="tel" name="numero_whatsapp" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-      </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Dirección de Envío *</label>
-        <textarea name="direccion_envio" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-height: 60px; resize: vertical;"></textarea>
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+      <h3 style="margin-bottom:20px;color:#333;text-align:center;">INFORMACIÓN DEL PEDIDO</h3>
+      <label>Nombre Completo *</label><input name="nombre_completo" required style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:10px;">
+      <label>Número de WhatsApp *</label><input type="tel" name="numero_whatsapp" required style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:10px;">
+      <label>Dirección de Envío *</label><textarea name="direccion_envio" required style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:10px;"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
-          <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Ciudad *</label>
-          <select name="ciudad" id="ciudad-select" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+          <label>Ciudad *</label>
+          <select id="ciudad-select" name="ciudad" required>
             <option value="">Escoja su ciudad</option>
             <option value="Popayan">Popayán</option>
             <option value="Jamundi">Jamundí</option>
-            <option value="Cali" disabled style="color: #999; background-color: #f5f5f5;">Cali (Próximamente)</option>
+            <option value="Cali" disabled>Cali (Próximamente)</option>
           </select>
         </div>
         <div>
-          <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Sede más cercana *</label>
-          <select name="sede" id="sede-select" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-            <option value="">Primero seleccione ciudad</option>
-          </select>
+          <label>Sede más cercana *</label>
+          <select id="sede-select" name="sede" required><option value="">Primero seleccione ciudad</option></select>
         </div>
       </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Programación de envío *</label>
-        <select name="programacion_envio" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-          <option value="">Seleccione opción de envío</option>
-          <option value="Envío inmediato">Envío inmediato</option>
-          <option value="En las próximas 2 horas">En las próximas 2 horas</option>
-          <option value="Esta tarde">Esta tarde</option>
-          <option value="Esta noche">Esta noche</option>
-          <option value="Mañana en la mañana">Mañana en la mañana</option>
-          <option value="Mañana en la tarde">Mañana en la tarde</option>
-          <option value="Fecha específica">Programar para fecha específica</option>
-        </select>
-      </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Método de Pago *</label>
-        <select name="metodo_pago" id="metodo-pago-select" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-          <option value="">Seleccione método de pago</option>
-          <option value="Efectivo">Efectivo</option>
-          <option value="Transferencia">Transferencia Bancaria</option>
-          <option value="Nequi">Nequi</option>
-          <option value="Daviplata">Daviplata</option>
-        </select>
-      </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Tipo de pedido/envoltura *</label>
-        <select name="tipo_envoltura" required style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-          <option value="">Seleccione una opción</option>
-          <option value="Para regalo">Para regalo</option>
-          <option value="Fecha especial">Fecha especial</option>
-          <option value="Envoltura estándar">Envoltura estándar</option>
-          <option value="Personalizada">Personalizada (especificar en notas)</option>
-        </select>
-      </div>
-      <div style="margin-bottom: 20px;">
-        <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">Extras o notas adicionales</label>
-        <textarea name="extras_notas" placeholder="Ej: Especificaciones de envoltura, instrucciones especiales, detalles del regalo, etc." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-height: 80px; resize: vertical;"></textarea>
-      </div>
-      <button type="submit" style="width: 100%; padding: 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer;">
-        ENVIAR PEDIDO
-      </button>
+      <label>Programación de envío *</label>
+      <select name="programacion_envio" required>
+        <option value="">Opción de envío</option>
+        <option value="Envío inmediato">Envío inmediato</option>
+        <option value="En las próximas 2 horas">En las próximas 2 horas</option>
+        <option value="Esta tarde">Esta tarde</option>
+        
+      </select>
+      <label>Método de Pago *</label>
+      <select id="metodo-pago-select" name="metodo_pago" required>
+        <option value="">Seleccione método</option>
+        <option value="Efectivo">Efectivo</option>
+        <option value="Transferencia">Transferencia Bancaria</option>
+        <option value="Nequi">Nequi</option>
+        <option value="Daviplata">Daviplata</option>
+      </select>
+      <label>Tipo de envoltura *</label>
+      <select name="tipo_envoltura" required>
+        <option value="">Seleccione</option>
+        <option value="Envoltura estándar">Envoltura estándar</option>
+        <option value="Personalizada">Personalizada</option>
+      </select>
+      <label>Notas adicionales</label>
+      <textarea name="extras_notas" placeholder="Ej: instrucciones especiales..." style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;margin-bottom:15px;"></textarea>
+      <button type="submit" style="width:100%;padding:15px;background:#4CAF50;color:white;border:none;border-radius:5px;font-size:16px;font-weight:bold;">ENVIAR PEDIDO</button>
     `;
 
-    // Configuración de sedes ACTUALIZADA
+    const ciudadSel = form.querySelector("#ciudad-select");
+    const sedeSel = form.querySelector("#sede-select");
+    const dirTxt = form.querySelector('[name="direccion_envio"]');
     const sedesPorCiudad = {
-      'Popayan': ['Sede Terraplaza Centro Commercial'],
-      'Jamundi': ['Sede Centro Comercial Alfaguara'],
-      'Cali': ['Sin sede']
+      Popayan: ["Sede Terraplaza Centro Comercial", "Sede Sur Planta de Producción"],
+      Jamundi: ["Sede Centro Comercial Alfaguara"],
+      Cali: ["Sin sede"]
     };
 
-    form.querySelector('#ciudad-select').addEventListener('change', function(e) {
+    ciudadSel.addEventListener("change", e => {
       const ciudad = e.target.value;
-      const sedeSelect = form.querySelector('#sede-select');
-      sedeSelect.innerHTML = '<option value="">Escoja su sede</option>';
-      
-      // CALI DESACTIVADA
-      if (ciudad === 'Cali') {
-        const option = document.createElement('option');
-        option.value = 'Sin sede';
-        option.textContent = 'Sin sede';
-        option.disabled = true;
-        option.style.color = '#999';
-        option.style.backgroundColor = '#f5f5f5';
-        sedeSelect.appendChild(option);
-        sedeSelect.value = 'Sin sede';
-        return;
-      }
-      
-      if (ciudad && sedesPorCiudad[ciudad]) {
+      sedeSel.innerHTML = '<option value="">Escoja su sede</option>';
+      if (ciudad && sedesPorCiudad[ciudad])
         sedesPorCiudad[ciudad].forEach(sede => {
-          const option = document.createElement('option');
-          option.value = sede;
-          option.textContent = sede;
-          sedeSelect.appendChild(option);
+          const opt = document.createElement("option");
+          opt.value = sede; opt.textContent = sede; sedeSel.appendChild(opt);
         });
-      }
+      setTimeout(() => recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt.value), 0);
     });
 
-    form.querySelector('#metodo-pago-select').addEventListener('change', function(e) {
+    sedeSel.addEventListener("change", () => recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt.value));
+
+    ensureGoogleMapsLoaded().then(() => {
+      try {
+        const auto = new google.maps.places.Autocomplete(dirTxt, { componentRestrictions: { country: ["co"] } });
+        auto.addListener("place_changed", () => {
+          const place = auto.getPlace();
+          if (place.geometry && place.geometry.location) {
+            dirTxt.dataset.lat = place.geometry.location.lat();
+            dirTxt.dataset.lng = place.geometry.location.lng();
+            recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt.value);
+          }
+        });
+      } catch (e) { console.warn("Autocomplete no disponible:", e); }
+    });
+
+    ["change", "blur", "input"].forEach(evt => {
+      let debounce;
+      dirTxt.addEventListener(evt, () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt.value), 400);
+      });
+    });
+
+    form.querySelector("#metodo-pago-select").addEventListener("change", e => {
+      metodoPagoSeleccionado = e.target.value;
+      guardarEstadoPedido();
+      if (metodoPagoSeleccionado !== "Efectivo") mostrarModalPagos();
+      renderCanasta();
+    });
+
+    form.addEventListener("submit", e => {
+      e.preventDefault(); handleFormSubmit(form);
+    });
+
+    return form;
+  }
+
+      setTimeout(() => recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt?.value), 0);
+    });
+
+    sedeSel.addEventListener('change', function() {
+      setTimeout(() => recalcularDomicilio(ciudadSel.value, sedeSel.value, dirTxt?.value), 0);
+    });
+
+    let debounce;
+    ['change','blur','input'].forEach(evt => {
+      dirTxt?.addEventListener(evt, () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          recalcularDomicilio(ciudadSel?.value, sedeSel?.value, dirTxt?.value);
+        }, 400);
+      });
+    });
+
+form.querySelector('#metodo-pago-select').addEventListener('change', function(e) {
       metodoPagoSeleccionado = e.target.value;
       guardarEstadoPedido();
       if (metodoPagoSeleccionado && metodoPagoSeleccionado !== 'Efectivo') {
@@ -555,25 +827,32 @@ document.addEventListener("DOMContentLoaded", function() {
       renderCanasta();
     });
 
+    // Submit
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       handleFormSubmit(form);
     });
 
+    ensureGoogleMapsLoaded().then(() => {
+      try {
+        if (window.google && google.maps && google.maps.places && dirTxt) {
+          new google.maps.places.Autocomplete(dirTxt, { componentRestrictions: { country: ['co'] } });
+        }
+      } catch (e) {}
+    });
+
     return form;
   }
 
-  // ====== FUNCIONES PARA MANEJAR ELEMENTOS QUE TAPAN EL MODAL ======
   function ocultarElementosQueTapanModal() {
     const elementosAltos = document.querySelectorAll(`
-        .w-nav-overlay,
-        [style*="z-index: 999"],
-        [style*="z-index: 9999"],
-        [style*="z-index: 1000"],
-        [class*="overlay"],
-        [class*="dropdown"]
+      .w-nav-overlay,
+      [style*="z-index: 999"],
+      [style*="z-index: 9999"],
+      [style*="z-index: 1000"],
+      [class*="overlay"],
+      [class*="dropdown"]
     `);
-    
     elementosAltos.forEach(el => {
       const computedZIndex = parseInt(window.getComputedStyle(el).zIndex);
       if (computedZIndex > 1000) {
@@ -591,434 +870,104 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
- // ====== MODAL DE PAGOS SOLO CON LOGOS (SIN TEXTO) ======
-function mostrarModalPagos() {
+  function mostrarModalPagos() {
     ocultarElementosQueTapanModal();
-    
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    
+
     const modal = document.createElement('div');
     modal.id = 'modal-pagos';
     modal.style.cssText = `
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      background: rgba(0,0,0,0.95) !important;
-      display: flex !important;
-      justify-content: center !important;
-      align-items: center !important;
-      z-index: 999999 !important;
-      padding: 20px !important;
-      box-sizing: border-box !important;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center;
+      z-index: 999999; padding: 20px; box-sizing: border-box;
     `;
-    
+
     modal.innerHTML = `
-      <div style="
-        background: white !important; 
-        padding: 25px !important; 
-        border-radius: 15px !important; 
-        width: 100% !important;
-        max-width: 450px !important;
-        max-height: 90vh !important;
-        overflow-y: auto !important;
-        box-shadow: 0 25px 50px rgba(0,0,0,0.5) !important;
-        position: relative !important;
-        z-index: 1000000 !important;
-      ">
-        <button onclick="cerrarModalPagos()" style="
-          position: absolute !important;
-          top: 15px !important;
-          right: 20px !important;
-          background: #dc3545 !important;
-          color: white !important;
-          border: none !important;
-          border-radius: 50% !important;
-          width: 35px !important;
-          height: 35px !important;
-          cursor: pointer !important;
-          font-size: 18px !important;
-          font-weight: bold !important;
-          z-index: 1000001 !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-        ">×</button>
-        
+      <div style="background: white; padding: 25px; border-radius: 15px; width: 100%; max-width: 450px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.5); position: relative;">
+        <button onclick="cerrarModalPagos()" style="position: absolute; top: 15px; right: 20px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 35px; height: 35px; cursor: pointer; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center;">×</button>
         <div style="text-align: center; margin-bottom: 20px; padding-top: 10px;">
-          <h3 style="color: #4CAF50; margin: 0 0 12px 0; font-size: 22px; font-weight: bold;">💳 INFORMACIÓN DE PAGO</h3>
+          <h3 style="color: #4CAF50; margin: 0 0 12px 0; font-size: 22px; font-weight: bold;">INFORMACIÓN DE PAGO</h3>
           <div style="background: #fff3cd; padding: 12px; border-radius: 8px; border: 2px solid #ffeaa7; margin-bottom: 10px;">
-            <p style="margin: 0; font-size: 14px; color: #856404; font-weight: bold;">
-              ⚠️ TOMA CAPTURA - No cierres esta ventana
-            </p>
+            <p style="margin: 0; font-size: 14px; color: #856404; font-weight: bold;">⚠️ TOMA CAPTURA - No cierres esta ventana</p>
           </div>
         </div>
-        
-        <!-- NEQUI SOLO LOGO -->
+
+        <!-- NEQUI -->
         <div style="margin-bottom: 20px; padding: 18px; background: #f8fbff; border-radius: 12px; border: 2px solid #e8f0fe;">
-          <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
-            <img src="https://cdn.brandfetch.io/id6FVNP6X7/w/800/h/248/theme/dark/logo.png?c=1dxbfHSJFAPEGdCLU4o5B" 
-                 style="width: 70px; height: 70px; object-fit: contain;" 
-                 alt="Nequi">
+          <div style="display:flex;align-items:center;justify-content:center;margin-bottom:15px;">
+            <img src="https://cdn.brandfetch.io/id6FVNP6X7/w/800/h/248/theme/dark/logo.png" style="width:70px; height:70px; object-fit:contain;" alt="Nequi">
           </div>
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0;">
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;background:white;padding:15px;border-radius:10px;border:1px solid #e0e0e0;">
               <div>
-                <div style="font-weight: bold; font-size: 14px; color: #666;">Número</div>
-                <div style="font-size: 18px; color: #333; font-weight: bold; margin-top: 5px;">3227249622</div>
+                <div style="font-weight:bold;font-size:14px;color:#666;">Número</div>
+                <div style="font-size:18px;color:#333;font-weight:bold;margin-top:5px;">3226374600</div>
               </div>
-              <button onclick="copiarAlPortapapeles('3227249622')" style="background: #4D14DE; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; min-width: 80px;">Copiar</button>
+              <button onclick="copiarAlPortapapeles('3226374600')" style="background:#4D14DE;color:white;border:none;padding:10px 15px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;min-width:80px;">Copiar</button>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;background:white;padding:15px;border-radius:10px;border:1px solid #e0e0e0;">
               <div>
-                <div style="font-weight: bold; font-size: 14px; color: #666;">BRE-B</div>
-                <div style="font-size: 18px; color: #333; font-weight: bold; margin-top: 5px;">322724FRIENDS</div>
+                <div style="font-weight:bold;font-size:14px;color:#666;">BRE-B</div>
+                <div style="font-size:18px;color:#333;font-weight:bold;margin-top:5px;">322724FRIENDS</div>
               </div>
-              <button onclick="copiarAlPortapapeles('322724FRIENDS')" style="background: #4D14DE; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; min-width: 80px;">Copiar</button>
+              <button onclick="copiarAlPortapapeles('3226374600')" style="background:#4D14DE;color:white;border:none;padding:10px 15px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;min-width:80px;">Copiar</button>
             </div>
           </div>
         </div>
-        
-        <!-- BANCOLOMBIA SOLO LOGO -->
+
+        <!-- BANCOLOMBIA -->
         <div style="margin-bottom: 20px; padding: 18px; background: #f8fdf8; border-radius: 12px; border: 2px solid #f0f8f0;">
-          <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
-            <img src="https://cdn.brandfetch.io/idPIbCua49/w/800/h/103/theme/dark/logo.webp?c=1dxbfHSJFAPEGdCLU4o5B" 
-                 style="width: 115px; height: 115px; object-fit: contain;" 
-                 alt="Bancolombia">
+          <div style="display:flex;align-items:center;justify-content:center;margin-bottom:15px;">
+            <img src="https://cdn.brandfetch.io/idPIbCua49/w/800/h/103/theme/dark/logo.webp" style="width:115px; height:115px; object-fit:contain;" alt="Bancolombia">
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;background:white;padding:15px;border-radius:10px;border:1px solid #e0e0e0;">
             <div>
-              <div style="font-weight: bold; font-size: 14px; color: #666;">Cuenta de ahorros</div>
-              <div style="font-size: 18px; color: #333; font-weight: bold; margin-top: 5px;">970-23456-99</div>
+              <div style="font-weight:bold;font-size:14px;color:#666;">Cuenta de ahorros</div>
+              <div style="font-size:18px;color:#333;font-weight:bold;margin-top:5px;">868-812759-80</div>
             </div>
-            <button onclick="copiarAlPortapapeles('970-23456-99')" style="background: #1E3A8A; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; min-width: 80px;">Copiar</button>
+            <button onclick="copiarAlPortapapeles('868-812759-80')" style="background:#1E3A8A;color:white;border:none;padding:10px 15px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:bold;min-width:80px;">Copiar</button>
           </div>
         </div>
-        
+
         <!-- COMPROBANTE -->
-        <div style="margin-bottom: 25px; padding: 18px; background: #f8f9fa; border-radius: 12px; border: 2px dashed #795548;">
-          <h4 style="color: #795548; margin: 0 0 12px 0; text-align: center; font-size: 18px; font-weight: bold;">📸 COMPROBANTE DE PAGO</h4>
-          <input type="file" id="comprobantePago" accept="image/*,capture=camera" style="width: 100%; padding: 15px; border: 2px solid #ccc; border-radius: 8px; background: white; font-size: 15px; margin-bottom: 8px;">
-          <small style="color: #666; display: block; text-align: center; font-size: 13px; font-weight: 500;">Toma foto o sube captura de tu transferencia</small>
+        <div style="margin-bottom:25px; padding:18px; background:#f8f9fa; border-radius:12px; border:2px dashed #795548;">
+          <h4 style="color:#795548; margin:0 0 12px 0; text-align:center; font-size:18px; font-weight:bold;">COMPROBANTE DE PAGO</h4>
+          <input type="file" id="input-comprobante" accept="image/*" style="width:100%; padding:10px;"/>
+          <small style="color:#555; display:block; margin-top:8px;">Formatos: JPG/PNG. Tamaño máx sugerido: 3 MB.</small>
         </div>
-        
-        <!-- BOTONES -->
-        <div style="display: flex; gap: 12px; flex-direction: column;">
-          <button onclick="confirmarPago()" style="padding: 18px; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 17px; font-weight: bold;">
-            ✅ YA REALICÉ EL PAGO
-          </button>
-          <button onclick="cerrarModalPagos()" style="padding: 15px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500;">
-            Cancelar Pago
-          </button>
-        </div>
+
+        <button onclick="cerrarModalPagos()" style="width:100%; padding:12px; background:#6c757d; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">
+          Entendido
+        </button>
       </div>
     `;
-    
     document.body.appendChild(modal);
-    
-    // Funciones globales (se mantienen igual)
-    window.copiarAlPortapapeles = function(texto) {
-      navigator.clipboard.writeText(texto).then(() => {
-        alert('✅ Copiado: ' + texto);
-      }).catch(() => {
-        const tempInput = document.createElement('input');
-        tempInput.value = texto;
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempInput);
-        alert('✅ Copiado: ' + texto);
+
+    const inputComp = modal.querySelector('#input-comprobante');
+    if (inputComp) {
+      inputComp.addEventListener('change', (e) => {
+        comprobanteArchivoGlobal = e.target.files?.[0] || null;
       });
-    };
-    
-    window.cerrarModalPagos = function() {
-      const modal = document.getElementById('modal-pagos');
-      if (modal) {
-        document.body.removeChild(modal);
-      }
-      restaurarElementosOcultos();
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-      
-      comprobanteArchivoGlobal = null;
-      
-      const metodoPagoSelect = document.querySelector('#metodo-pago-select');
-      if (metodoPagoSelect) {
-        metodoPagoSelect.value = '';
-      }
-      metodoPagoSeleccionado = '';
-      guardarEstadoPedido();
-    };
-    
-    window.confirmarPago = function() {
-      const comprobanteInput = document.getElementById('comprobantePago');
-      if (comprobanteInput && comprobanteInput.files.length > 0) {
-        comprobanteArchivoGlobal = comprobanteInput.files[0];
-        console.log("💾 Comprobante guardado:", comprobanteArchivoGlobal.name);
-        
-        alert('✅ Comprobante listo. Ahora completa tu información de envío.');
-        const modal = document.getElementById('modal-pagos');
-        if (modal) {
-          document.body.removeChild(modal);
-          restaurarElementosOcultos();
-          document.body.style.overflow = '';
-          document.documentElement.style.overflow = '';
-        }
-      } else {
-        alert('⚠️ Por favor adjunta el comprobante de pago antes de continuar.');
-      }
-    };
+    }
   }
 
-  // ====== FIREBASE STORAGE MEJORADO ======
-  async function subirComprobanteAFirebase(archivo, pedidoId = null) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        console.log("🔄 Iniciando subida de archivo:", archivo.name, "Tamaño:", archivo.size, "Tipo:", archivo.type);
-        
-        if (archivo.size > 5 * 1024 * 1024) {
-          throw new Error("La imagen es muy grande. Máximo 5MB.");
-        }
-        
-        if (!archivo.type.startsWith('image/')) {
-          throw new Error("Solo se permiten archivos de imagen.");
-        }
-        
-        const timestamp = Date.now();
-        const pedidoSuffix = pedidoId ? `_pedido_${pedidoId}` : `_temp_${timestamp}`;
-        const nombreArchivo = `comprobantes/${timestamp}_${archivo.name.replace(/\s+/g, '_')}${pedidoSuffix}`;
-        
-        const storageRef = storage.ref().child(nombreArchivo);
-        
-        console.log("📁 Subiendo a Storage:", nombreArchivo);
-        
-        const metadata = {
-          contentType: archivo.type,
-          customMetadata: {
-            'uploadedBy': 'webflow-form',
-            'timestamp': timestamp.toString(),
-            'originalName': archivo.name,
-            'size': archivo.size.toString(),
-            'pedidoId': pedidoId || 'sin_id'
-          }
-        };
-        
-        const snapshot = await storageRef.put(archivo, metadata);
-        console.log("✅ Archivo subido, obteniendo URL...");
-        
-        const downloadURL = await snapshot.ref.getDownloadURL();
-        console.log("🌐 URL obtenida:", downloadURL);
-        
-        resolve({
-          url: downloadURL,
-          nombreArchivo: nombreArchivo,
-          path: snapshot.ref.fullPath
-        });
-        
-      } catch (error) {
-        console.error("❌ Error en subirComprobanteAFirebase:", error);
-        reject(error);
-      }
+  window.cerrarModalPagos = function() {
+    const modal = document.getElementById('modal-pagos');
+    if (modal) modal.remove();
+    restaurarElementosOcultos();
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+  };
+
+  window.copiarAlPortapapeles = function(texto) {
+    navigator.clipboard.writeText(texto).then(() => {
+      alert('Copiado al portapapeles: ' + texto);
+    }).catch(() => {
+      alert('No se pudo copiar. Selecciona y copia manualmente: ' + texto);
     });
-  }
+  };
 
-  async function enviarPedidoAFirebase(payload) {
-    try {
-      const docRef = await db.collection('pedidos').add({
-        ...payload,
-        estado: 'pendiente',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      return { success: true, id: docRef.id };
-    } catch (err) {
-      console.error("Error guardando en Firebase:", err);
-      return { success: false, error: err.message || String(err) };
-    }
-  }
-
-  async function handleFormSubmit(formEl) {
-    if (!formEl || selectedProducts.length === 0) {
-      alert("Por favor agrega productos a la canasta antes de enviar el pedido.");
-      return;
-    }
-
-    let saboresValidos = true;
-    selectedProducts.forEach((p) => {
-      if (p.category === 'BabyKukis' && (!p.sabores || p.sabores.length === 0)) {
-        saboresValidos = false;
-      }
-    });
-    if (!saboresValidos) {
-      alert('Por favor selecciona al menos 1 sabor para todos los productos BabyKukis');
-      return;
-    }
-
-    const nombre = formEl.querySelector('[name="nombre_completo"]')?.value.trim() || '';
-    const whatsapp = formEl.querySelector('[name="numero_whatsapp"]')?.value.trim() || '';
-    const direccion = formEl.querySelector('[name="direccion_envio"]')?.value.trim() || '';
-    const ciudad = formEl.querySelector('[name="ciudad"]')?.value || '';
-    const sede = formEl.querySelector('[name="sede"]')?.value || '';
-    const programacionEnvio = formEl.querySelector('[name="programacion_envio"]')?.value || '';
-    const metodoPago = formEl.querySelector('[name="metodo_pago"]')?.value || '';
-    const tipoEnvoltura = formEl.querySelector('[name="tipo_envoltura"]')?.value || '';
-    const extrasNotas = formEl.querySelector('[name="extras_notas"]')?.value.trim() || '';
-
-    if (!nombre || !whatsapp || !direccion || !ciudad || !sede || !programacionEnvio || !metodoPago || !tipoEnvoltura) {
-      alert("Por favor completa todos los campos obligatorios.");
-      return;
-    }
-
-    console.log("📝 Datos capturados:", { nombre, whatsapp, ciudad, sede, metodoPago });
-
-    const submitBtn = formEl.querySelector('button[type="submit"]');
-    const originalText = submitBtn?.textContent || 'ENVIAR';
-    if (submitBtn) {
-      submitBtn.textContent = "📤 PREPARANDO...";
-      submitBtn.disabled = true;
-      submitBtn.style.opacity = 0.7;
-    }
-
-    let comprobanteFile = null;
-    
-    console.log("🔍 Buscando comprobante...");
-    
-    if (comprobanteArchivoGlobal) {
-      comprobanteFile = comprobanteArchivoGlobal;
-      console.log("📁 Comprobante encontrado en variable global:", comprobanteFile.name);
-    } else {
-      const comprobanteInput = document.getElementById('comprobantePago');
-      if (comprobanteInput && comprobanteInput.files && comprobanteInput.files.length > 0) {
-        comprobanteFile = comprobanteInput.files[0];
-        console.log("📁 Comprobante encontrado en modal:", comprobanteFile.name);
-      } else {
-        console.log("ℹ️ No se encontró comprobante para subir");
-      }
-    }
-
-    // PRIMERO: Crear el pedido en Firestore para obtener el ID
-    if (submitBtn) {
-      submitBtn.textContent = "🚀 CREANDO PEDIDO...";
-    }
-
-    const detallesObj = formatearDetallesPedido();
-    
-    const payloadInicial = {
-      nombre, whatsapp, direccion, ciudad, sede, programacionEnvio,
-      metodoPago, tipoEnvoltura, extrasNotas,
-      detallesPedido: detallesObj.texto,
-      productos: selectedProducts,
-      total: detallesObj.total,
-      opcionDomicilio, costoDomicilio: COSTO_DOMICILIO,
-      subtotalProductos: detallesObj.subtotalProductos,
-      comprobantePagoUrl: '',
-      tieneComprobante: false,
-      nombreArchivoComprobante: comprobanteFile?.name || 'sin_comprobante',
-      origen: window.location.href,
-      fecha: new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })
-    };
-
-    console.log("📦 Creando pedido en Firebase...");
-
-    let pedidoId = null;
-    let result = null;
-    
-    try {
-      const docRef = await db.collection('pedidos').add({
-        ...payloadInicial,
-        estado: 'pendiente',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      pedidoId = docRef.id;
-      console.log("🎉 Pedido creado con ID:", pedidoId);
-      
-      // AHORA SUBIR COMPROBANTE CON EL ID DEL PEDIDO
-      if (comprobanteFile) {
-        try {
-          if (submitBtn) {
-            submitBtn.textContent = "📤 SUBIENDO COMPROBANTE...";
-          }
-          
-          console.log("🔄 Subiendo comprobante con ID pedido:", pedidoId);
-          const comprobanteInfo = await subirComprobanteAFirebase(comprobanteFile, pedidoId);
-          console.log("✅ Comprobante subido exitosamente:", comprobanteInfo.url);
-          
-          await db.collection('pedidos').doc(pedidoId).update({
-            comprobantePagoUrl: comprobanteInfo.url,
-            tieneComprobante: true,
-            nombreArchivoComprobante: comprobanteFile.name,
-            pathComprobante: comprobanteInfo.path,
-            actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          
-          console.log("✅ Pedido actualizado con comprobante");
-          
-        } catch (error) {
-          console.error("❌ Error subiendo comprobante:", error);
-          await db.collection('pedidos').doc(pedidoId).update({
-            errorComprobante: error.message
-          });
-        }
-      }
-      
-      // GENERAR ID DE SEGUIMIENTO
-      const idSeguimiento = generarIDUnico();
-      
-      // ACTUALIZAR EL PEDIDO CON EL ID DE SEGUIMIENTO
-      await db.collection('pedidos').doc(pedidoId).update({
-        idSeguimiento: idSeguimiento,
-        actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      console.log("🔢 ID de seguimiento generado:", idSeguimiento);
-      
-      result = { success: true, id: pedidoId, idSeguimiento: idSeguimiento };
-      
-    } catch (err) {
-      console.error("💥 Error creando pedido:", err);
-      result = { success: false, error: err.message || String(err) };
-    }
-
-    if (result.success) {
-      console.log("🎉 Proceso completado. Pedido ID:", pedidoId, "Seguimiento:", result.idSeguimiento);
-      
-      comprobanteArchivoGlobal = null;
-      
-      // MENSAJE MEJORADO TIPO RAPPI
-      alert(`🎉 ¡PEDIDO CONFIRMADO!
-
-📦 Número de seguimiento: ${result.idSeguimiento}
-
-📍 Estado: Recibido
-⏰ Procesando tu pedido...
-
-🔍 Consulta el estado en:
-friends-kukis.webflow.io
-
-¡Gracias por tu compra! 🍪`);
-      
-      formEl.reset();
-      selectedProducts = [];
-      opcionDomicilio = 'recoger';
-      metodoPagoSeleccionado = '';
-      limpiarEstadoPedido();
-      renderCanasta();
-      if (formularioContainer) formularioContainer.style.display = 'none';
-    } else {
-      console.error("💥 Error en el proceso:", result.error);
-      alert('Error al enviar pedido. Por favor intenta nuevamente.\nError: ' + result.error);
-    }
-
-    if (submitBtn) {
-      submitBtn.textContent = originalText;
-      submitBtn.disabled = false;
-      submitBtn.style.opacity = 1;
-    }
-  }
-
-  // ====== INICIALIZACIÓN ======
   function crearDesplegableSabores(productIndex) {
     const sabores = ['Nutella', 'Red Velvet', 'Leche Klim', 'Maracuyá'];
     const container = document.createElement('div');
@@ -1074,102 +1023,345 @@ friends-kukis.webflow.io
     container.appendChild(select);
 
     const instrucciones = document.createElement('small');
-    instrucciones.textContent = 'Mantén Ctrl (Windows) o Cmd (Mac) para seleccionar múltiples sabores';
+    instrucciones.textContent = 'Mantén presionada la tecla Ctrl (o Cmd en Mac) para seleccionar varios.';
     instrucciones.style.display = 'block';
-    instrucciones.style.marginTop = '5px';
+    instrucciones.style.marginTop = '6px';
     instrucciones.style.color = '#666';
-    instrucciones.style.fontSize = '12px';
     container.appendChild(instrucciones);
 
     return container;
   }
 
+  async function handleFormSubmit(formEl) {
+    // Validación mínima
+    if (selectedProducts.length === 0) {
+      alert('Tu canasta está vacía.');
+      return;
+    }
+
+    const submitBtn = formEl.querySelector('button[type="submit"]');
+    const originalText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+      submitBtn.textContent = 'Enviando...';
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = 0.7;
+    }
+
+    const fd = new FormData(formEl);
+    const nombre = fd.get('nombre_completo')?.toString().trim();
+    const whatsapp = fd.get('numero_whatsapp')?.toString().trim();
+    const direccion = fd.get('direccion_envio')?.toString().trim();
+    const ciudad = fd.get('ciudad')?.toString();
+    const sede = fd.get('sede')?.toString();
+    const programacion_envio = fd.get('programacion_envio')?.toString();
+    const metodo_pago = fd.get('metodo_pago')?.toString();
+    const tipo_envoltura = fd.get('tipo_envoltura')?.toString();
+    const extras_notas = fd.get('extras_notas')?.toString();
+
+
+if (metodo_pago && metodo_pago !== 'Efectivo') {
+      if (!comprobanteArchivoGlobal) {
+        alert('⚠️ Debes subir el comprobante de pago antes de enviar tu pedido.');
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; submitBtn.style.opacity = 1; }
+        return;
+      }
+      const tiposOK = ['image/jpeg','image/png','image/jpg'];
+      if (!tiposOK.includes(comprobanteArchivoGlobal.type)) {
+        alert('❌ Solo se permiten imágenes JPG o PNG como comprobante.');
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; submitBtn.style.opacity = 1; }
+        return;
+      }
+      if (comprobanteArchivoGlobal.size > 3 * 1024 * 1024) {
+        alert('❌ El archivo excede los 3 MB permitidos.');
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; submitBtn.style.opacity = 1; }
+        return;
+      }
+    }
+
+    const detallesObj = formatearDetallesPedido();
+
+    let urlComprobante = '';
+    if (comprobanteArchivoGlobal) {
+      try {
+        const ext = (comprobanteArchivoGlobal.name || 'comprobante').split('.').pop();
+        const idSeg = generarIDUnico();
+        const ref = storage.ref().child(`comprobantes/${Date.now()}_${idSeg}.${ext}`);
+        await ref.put(comprobanteArchivoGlobal);
+        urlComprobante = await ref.getDownloadURL();
+      } catch (e) {
+        console.warn('No se pudo subir comprobante:', e);
+      }
+    }
+
+    const payload = {
+      idSeguimiento: generarIDUnico(),
+      fechaCreacion: firebase.firestore.FieldValue.serverTimestamp(),
+      nombre,
+      whatsapp,
+      direccion,
+      ciudad,
+      sede,
+      programacion_envio,
+      metodo_pago,
+      tipo_envoltura,
+      extras_notas,
+      productos: selectedProducts,
+      opcionDomicilio,
+      costoDomicilio: COSTO_DOMICILIO,
+      subtotalProductos: detallesObj.subtotalProductos,
+      total: detallesObj.total,
+      detallesTexto: detallesObj.texto,
+      distanciaKm: DISTANCIA_KM,
+      tarifaDomiRango: { min: COSTO_MIN, max: COSTO_MAX },
+      origenSedeTexto: (DIRECCION_SEDES[ciudad] && DIRECCION_SEDES[ciudad][sede]) ? DIRECCION_SEDES[ciudad][sede] : '',
+      destinoClienteTexto: `${direccion || ''}${ciudad ? ', ' + ciudad : ''}, Colombia`,
+      domicilioDinamicoOK: DISTANCIA_KM != null,
+      urlComprobante
+    };
+
+    try {
+      const docRef = await db.collection('pedidos').add(payload);
+      alert(`🎉 Pedido recibido. ¡Gracias por tu compra!
+
+📦 Número de seguimiento: ${payload.idSeguimiento}
+
+📍 Estado: Recibido
+⏰ Procesando tu pedido...
+
+🔍 Consulta el estado en:
+friends-kukis.webflow.io`);
+
+      formEl.reset();
+      selectedProducts = [];
+      opcionDomicilio = 'recoger';
+      metodoPagoSeleccionado = '';
+      comprobanteArchivoGlobal = null;
+      limpiarEstadoPedido();
+      renderCanasta();
+      if (formularioContainer) formularioContainer.style.display = 'none';
+    } catch (err) {
+      console.error("💥 Error en el proceso:", err);
+      alert('Error al enviar pedido. Por favor intenta nuevamente.\nError: ' + (err?.message || err));
+    } finally {
+      if (submitBtn) {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = 1;
+      }
+    }
+  }
+
+  function ensureGoogleMapsLoaded() {
+    return new Promise((resolve) => {
+      if (window.google && google.maps && google.maps.DistanceMatrixService) {
+        return resolve();
+      }
+      if (document.getElementById('gmaps-sdk')) {
+        const check = setInterval(() => {
+          if (window.google && google.maps && google.maps.DistanceMatrixService) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 300);
+        return;
+      }
+      const script = document.createElement('script');
+      script.id = 'gmaps-sdk';
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBUGX7VXXFeFsKSh5Lgzuy-SdGG5vRg-b0&libraries=places';
+      script.async = true;
+      document.head.appendChild(script);
+
+      const check = setInterval(() => {
+        if (window.google && google.maps && google.maps.DistanceMatrixService) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 300);
+    });
+  }
+
+  function getDistanceKm(originText, destinationText) {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !google.maps || !google.maps.DistanceMatrixService) {
+        return reject(new Error('Google Maps JS no cargó'));
+      }
+      const service = new google.maps.DistanceMatrixService();
+      service.getDistanceMatrix(
+        {
+          origins: [originText],
+          destinations: [destinationText],
+          travelMode: google.maps.TravelMode.DRIVING,
+          unitSystem: google.maps.UnitSystem.METRIC
+        },
+        (response, status) => {
+          try {
+            if (status !== 'OK') return reject(new Error('DistanceMatrix status: ' + status));
+            const row = response.rows?.[0];
+            const elem = row?.elements?.[0];
+            if (!elem || elem.status !== 'OK') return reject(new Error('Sin ruta válida'));
+            const meters = elem.distance.value; 
+            const km = meters / 1000;
+            resolve(km);
+          } catch (e) {
+            reject(e);
+          }
+        }
+      );
+    });
+  }
+
+  function tarifaPorKm(km) {
+    const kMin = 1.5;
+    const kMax = 8;
+    if (km <= kMin) return COSTO_MIN;
+    if (km >= kMax) return COSTO_MAX;
+    const frac = (km - kMin) / (kMax - kMin);
+    const valor = COSTO_MIN + frac * (COSTO_MAX - COSTO_MIN);
+    return Math.round(valor / 100) * 100; 
+  }
+
+  async function recalcularDomicilio(ciudad, sede, direccion) {
+    try {
+      if (!ciudad || !sede || !direccion || direccion.trim().length < 5) {
+        DISTANCIA_KM = null;
+        COSTO_DOMICILIO = 5000;
+        renderCanasta();
+        return;
+      }
+
+      const origen = DIRECCION_SEDES[ciudad]?.[sede];
+      if (!origen) {
+        DISTANCIA_KM = null;
+        COSTO_DOMICILIO = FALLBACK_DOMI; 
+        renderCanasta();
+        return;
+      }
+      const destino = `${direccion}, ${ciudad}, Colombia`;
+
+      await ensureGoogleMapsLoaded();
+      const km = await getDistanceKm(origen, destino);
+      DISTANCIA_KM = Number(km.toFixed(2));
+      COSTO_DOMICILIO = tarifaPorKm(DISTANCIA_KM);
+      renderCanasta();
+    } catch (err) {
+      console.warn('No se pudo calcular distancia:', err);
+      DISTANCIA_KM = null;
+      COSTO_DOMICILIO = FALLBACK_DOMI; 
+      renderCanasta();
+    }
+  }
+
   renderCanasta();
-  updateCanastaCount();
 });
+
+
+
+
+
+
+
+
+const iconosCarrito = document.querySelectorAll('#btn-canasta-kukiss, .carrito-btn, .cart-icon');
+if (iconosCarrito.length > 0) {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes bounceKuki {
+      0%,100% { transform: scale(1); }
+      50% { transform: scale(1.25) rotate(-6deg); }
+    }
+    .brinca-kuki {
+      animation: bounceKuki 0.5s ease;
+    }
+  `;
+  document.head.appendChild(style);
+
+  iconosCarrito.forEach(icono => {
+    icono.addEventListener('click', () => {
+      icono.classList.add('brinca-kuki');
+      setTimeout(() => icono.classList.remove('brinca-kuki'), 500);
+    });
+  });
+}
+
 </script>
 
-<!-- CSS CRÍTICO PARA MODAL -->
+
+
+
+
+
 <style>
-#modal-pagos {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: rgba(0,0,0,0.95) !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  z-index: 999999 !important;
-  padding: 20px !important;
-  box-sizing: border-box !important;
+@keyframes spinKuki {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin-active {
+  animation: spinKuki 1.2s ease-in-out;
 }
 
-#modal-pagos > div {
-  z-index: 1000000 !important;
-  position: relative !important;
+@keyframes shakeKuki {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.shake-active {
+  animation: shakeKuki 0.45s ease-in-out;
 }
 
-body > *:not(#modal-pagos) {
-  z-index: auto !important;
+@keyframes vibrarKuki {
+  0%, 100% { transform: translate(0); }
+  25% { transform: translate(-1px, 1px); }
+  50% { transform: translate(1px, -1px); }
+  75% { transform: translate(-1px, -1px); }
 }
-
-.w-nav, 
-[class*="header"], 
-[class*="navbar"],
-[class*="sticky"],
-[class*="fixed"] {
-  z-index: 999 !important;
-}
-
-body.modal-open {
-  overflow: hidden !important;
-  position: fixed !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-@media (max-width: 480px) {
-  #modal-pagos {
-    padding: 10px !important;
-  }
-  
-  #modal-pagos > div {
-    max-width: 95% !important;
-    max-height: 95vh !important;
-    padding: 20px !important;
-  }
-}
-
-#btn-canasta-kuki,
-[class*="canasta"],
-[class*="carrito"] {
-  z-index: 100 !important;
-}
-
-@keyframes saltoCarrito {
-  0% { transform: scale(1) translateY(0); }
-  30% { transform: scale(1.5) translateY(-6px); }
-  60% { transform: scale(0.95) translateY(2px); }
-  100% { transform: scale(1) translateY(0); }
-}
-.animar-carrito {
-  animation: saltoCarrito 0.4s ease;
-}
-
-html {
-  scroll-behavior: smooth;
+.vibrar-active {
+  animation: vibrarKuki 0.25s ease-in-out;
 }
 </style>
 
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  document.querySelectorAll('.carrito-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.classList.add('animar-carrito');
-      setTimeout(() => btn.classList.remove('animar-carrito'), 400);
+document.addEventListener("DOMContentLoaded", () => {
+
+  const logo = document.querySelector('#logo-kuki');
+  if (logo) {
+    logo.classList.add('spin-active');
+    setTimeout(() => logo.classList.remove('spin-active'), 1500);
+  }
+
+  const iconosCarrito = document.querySelectorAll(
+    '#btn-canasta-kuki, #btn-canasta-kukiss, .carrito-btn, .cart-icon'
+  );
+  if (iconosCarrito.length > 0) {
+    iconosCarrito.forEach(icono => {
+      icono.classList.add('shake-active');
+      setTimeout(() => icono.classList.remove('shake-active'), 450);
     });
-  });
+
+    setInterval(() => {
+      iconosCarrito.forEach(icono => {
+        icono.classList.add('shake-active');
+        setTimeout(() => icono.classList.remove('shake-active'), 450);
+      });
+    }, 4000); 
+  }
+
+  const categorias = document.querySelectorAll(
+    '#Galletas-rellenas123, #Cuchareables-cat123, #baby123'
+  );
+  if (categorias.length > 0) {
+    categorias.forEach(cat => {
+      cat.classList.add('vibrar-active');
+      setTimeout(() => cat.classList.remove('vibrar-active'), 250);
+    });
+
+    setInterval(() => {
+      categorias.forEach(cat => {
+        cat.classList.add('vibrar-active');
+        setTimeout(() => cat.classList.remove('vibrar-active'), 250);
+      });
+    }, 2300);
+  }
+
 });
 </script>
+
